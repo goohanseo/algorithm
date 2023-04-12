@@ -1,102 +1,82 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
-#define MAX_LINE_LENGTH 1024
-#define MAX_IP_LENGTH 16
-#define MAX_TIME_LENGTH 32
-#define MAX_URL_LENGTH 512
-#define MAX_STATUS_LENGTH 8
-#define MAX_LOG_ENTRIES 1000
-
+#define MAX_LINE_LEN 1024
+#define MAX_RECORDS 100000
 
 typedef struct {
-    char ip[MAX_IP_LENGTH];
-    char time[MAX_TIME_LENGTH];
-    char url[MAX_URL_LENGTH];
-    char status[MAX_STATUS_LENGTH];
-} LogEntry;
+    char ip[16];
+    time_t time;
+    char url[MAX_LINE_LEN];
+    int status;
+} Record;
 
-void print_entries(LogEntry* entries, int num_entries);
-int compare_time(const void* a, const void* b);
-int compare_ip(const void* a, const void* b);
+int cmp_time(const void *a, const void *b) {
+    Record *r1 = (Record *)a;
+    Record *r2 = (Record *)b;
+    return difftime(r1->time, r2->time);
+}
+
+int cmp_ip(const void *a, const void *b) {
+    Record *r1 = (Record *)a;
+    Record *r2 = (Record *)b;
+    int cmp = strcmp(r1->ip, r2->ip);
+    if (cmp != 0) {
+        return cmp;
+    }
+    return cmp_time(a, b);
+}
 
 int main() {
-        printf("hello");
-
-    FILE* fp;
-    char line[MAX_LINE_LENGTH];
-    LogEntry entries[MAX_LOG_ENTRIES];
-    int num_entries = 0;
-        printf("hello");
-
-    fp = fopen("/Users/guhanseo/c++/5주차/webLog.csv", "r");
-    printf("hello");
+    Record records[MAX_RECORDS];
+    int n = 0;
+    FILE *fp = fopen("/Users/guhanseo/c++/5주차/webLog.csv", "r");
     if (fp == NULL) {
-        fprintf(stderr, "Error: could not open log file\n");
-        exit(1);
+        perror("Failed to open file");
+        exit(EXIT_FAILURE);
     }
-
-    // Read log file and parse each line into a LogEntry struct
-    while (fgets(line, MAX_LINE_LENGTH, fp) != NULL) {
-    char* ip = strtok(line, ",");
-    char* time = strtok(NULL, ",");
-    char* url = strtok(NULL, ",");
-    char* status = strtok(NULL, ",");
-    if (ip && time && url && status) {
-        LogEntry entry;
-        strlcpy(entry.ip, ip, MAX_IP_LENGTH);
-        strlcpy(entry.time, time, MAX_TIME_LENGTH);
-        strlcpy(entry.url, url, MAX_URL_LENGTH);
-        strlcpy(entry.status, status, MAX_STATUS_LENGTH);
-        entries[num_entries++] = entry;
+    char line[MAX_LINE_LEN];
+    while (fgets(line, MAX_LINE_LEN, fp) != NULL) {
+        char *ip = strtok(line, ",");
+        char *time_str = strtok(NULL, ",");
+        char *url = strtok(NULL, ",");
+        char *status_str = strtok(NULL, ",");
+        struct tm time_info;
+        strptime(time_str, "%d/%b/%Y:%H:%M:%S", &time_info);
+        time_t time = mktime(&time_info);
+        if (time == (time_t)-1) {
+            fprintf(stderr, "Failed to parse time: %s", time_str);
+            continue;
+        }
+        int status = atoi(status_str);
+        if (n < MAX_RECORDS) {
+            strncpy(records[n].ip, ip, sizeof(records[n].ip));
+            records[n].time = time;
+            strncpy(records[n].url, url, sizeof(records[n].url));
+            records[n].status = status;
+            n++;
+        } else {
+            fprintf(stderr, "Max number of records reached");
+            break;
+        }
     }
-}
-
-
-    // Sort log entries based on user's choice of sorting criteria
-    char cmd[MAX_LINE_LENGTH];
-   while (1) {
-    printf("Enter command (sort -t, sort -ip, print, or exit): ");
-    fgets(cmd, MAX_LINE_LENGTH, stdin);
-    if (strcmp(cmd, "sort -t\n") == 0) {
-        qsort(entries, num_entries, sizeof(LogEntry), compare_time);
-        printf("Log entries sorted in chronological order\n");
-    } else if (strcmp(cmd, "sort -ip\n") == 0) {
-        qsort(entries, num_entries, sizeof(LogEntry), compare_ip);
-        printf("Log entries sorted by IP address\n");
-    } else if (strcmp(cmd, "print\n") == 0) {
-        print_entries(entries, num_entries);
-    } else if (strcmp(cmd, "exit\n") == 0) {
-        break;
-    } else {
-        printf("Invalid command. Please try again.\n");
-    }
-}
-
     fclose(fp);
+
+    qsort(records, n, sizeof(Record), cmp_time);
+    for (int i = 0; i < n; i++) {
+        char time_str[MAX_LINE_LEN];
+        strftime(time_str, sizeof(time_str), "%d/%b/%Y:%H:%M:%S", localtime(&records[i].time));
+        printf("%s IP: %s URL: %s Status: %d\n", time_str, records[i].ip, records[i].url, records[i].status);
+    }
+
+    qsort(records, n, sizeof(Record), cmp_ip);
+    for (int i = 0; i < n; i++) {
+        char time_str[MAX_LINE_LEN];
+        strftime(time_str, sizeof(time_str), "%d/%b/%Y:%H:%M:%S", localtime(&records[i].time));
+        printf("%s Time: %s URL: %s Status: %d\n", records[i].ip, time_str, records[i].url, records[i].status);
+    }
+
     return 0;
-}
-
-int compare_time(const void* a, const void* b) {
-    LogEntry* entry1 = (LogEntry*)a;
-    LogEntry* entry2 = (LogEntry*)b;
-    return strcmp(entry1->time, entry2->time);
-}
-
-int compare_ip(const void* a, const void* b) {
-    LogEntry* entry1 = (LogEntry*)a;
-    LogEntry* entry2 = (LogEntry*)b;
-    int cmp = strcmp(entry1->ip, entry2->ip);
-    if (cmp == 0) {
-        cmp = compare_time(a, b);
-    }
-    return cmp;
-}
-
-void print_entries(LogEntry* entries, int num_entries) {
-    for (int i = 0; i < num_entries; i++) {
-        printf("IP: %s\nTime: %s\nURL: %s\nStatus: %s\n\n", 
-                entries[i].ip, entries[i].time, entries[i].url, entries[i].status);
-    }
 }
